@@ -17,7 +17,15 @@ limitations under the License.
 package nfs
 
 import (
+	"bytes"
 	"fmt"
+	token2 "github.com/kubernetes-csi/csi-driver-nfs/pkg/nhn/token"
+	"io/ioutil"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -105,6 +113,126 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 				if mountPermissions, err = strconv.ParseUint(v, 8, 32); err != nil {
 					return nil, status.Errorf(codes.InvalidArgument, fmt.Sprintf("invalid mountPermissions %s in storage class", v))
 				}
+			}
+		case paramNHNCloudNFS:
+			if v != "" {
+				cfg, err := token2.ReadConfig()
+				if err != nil {
+					panic(err.Error())
+				}
+				auth_url, trust_id, trustee_user_id, trustee_password := ReadConfigFromSecret()
+				klog.Warningf("KKJ Print inside paramNHNCloudNFS : %v %v %v %v", auth_url, trust_id, trustee_user_id, trustee_password)
+
+				config, err := rest.InClusterConfig()
+				if err != nil {
+					panic(err.Error())
+				}
+
+				// creates the clientset
+				clientset, err := kubernetes.NewForConfig(config)
+				if err != nil {
+					panic(err.Error())
+				}
+
+				pvc, err := clientset.CoreV1().PersistentVolumeClaims(parameters[pvcNamespaceKey]).Get(context.TODO(), parameters[pvcNameKey], v1.GetOptions{})
+
+				klog.Warningf("KKJ pvc annotaion info %v", pvc.Annotations)
+				klog.Warningf("KKJ pvc annotaion info nfs : %v", pvc.Annotations["nfs"])
+
+				client := &http.Client{}
+
+				authBody := AuthBody{
+					Auth: Auth{
+						Identity: Identity{
+							Methods: []string{"password"},
+							PassWord: PassWord{
+								User: User{
+									Id:       trustee_user_id,
+									Password: trustee_password,
+								},
+							},
+						},
+						Scope: Scope{
+							OsTrust: OsTrust{
+								Id: trust_id,
+							},
+						},
+					},
+				}
+
+				authBodyJson, _ := json.Marshal(authBody)
+				buff := bytes.NewBuffer(authBodyJson)
+
+				req, err := http.NewRequest("POST", auth_url, buff)
+				req.Header.Set("Content-Type", "application/json")
+
+				resp, err := client.Do(req)
+
+				if err != nil {
+					log.Fatalln(err)
+				}
+
+				defer resp.Body.Close()
+
+				// header, err := ioutil.ReadAll(resp.Header.)
+				// body, err := ioutil.ReadAll(resp.Body)
+
+				token := resp.Header.Get("X-Subject-Token")
+
+				klog.Warningf("KKJ token get %v", token)
+
+				if err != nil {
+					log.Fatalln(err)
+				}
+
+				// data := make(map[string]TokenInfo)
+				// data := TokenInfo{}
+				// errr := json.Unmarshal([]byte(body), &data)
+
+				//////////////////
+
+				nasbody := pvc.Annotations["nfs"]
+
+				nas_data := NasInfo{}
+				nas_err := json.Unmarshal([]byte(nasbody), &nas_data)
+
+				if nas_err != nil {
+					log.Fatalln(nas_err)
+				}
+
+				nas_data_json, _ := json.Marshal(nas_data)
+				klog.Warningf("KKJ marsharl data : %v", string(nas_data_json))
+				buff = bytes.NewBuffer(nas_data_json)
+
+				client = &http.Client{}
+
+				req, err = http.NewRequest("POST", "http://stg-online-nas.kr2-t1.cloud.toastoven.net/v1/volumes", buff)
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("X-Auth-Token", token)
+
+				resp, err = client.Do(req)
+
+				if err != nil {
+					log.Fatalln(err)
+				}
+
+				body, err := ioutil.ReadAll(resp.Body)
+
+				data := NasCreateResponse{}
+				errr := json.Unmarshal([]byte(body), &data)
+
+				if errr != nil {
+					log.Println(err)
+				}
+
+				datadd := string(body)
+				klog.Warningf("KKJ output : %v", datadd)
+				klog.Warningf("KKJ response output : %v", data.Header.IsSuccessful)
+
+				defer resp.Body.Close()
+
+				///////////////////////
+
 			}
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, fmt.Sprintf("invalid parameter %q in storage class", k))

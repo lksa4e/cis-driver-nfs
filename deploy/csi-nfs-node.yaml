@@ -103,19 +103,24 @@ spec:
             initialDelaySeconds: 30
             timeoutSeconds: 10
             periodSeconds: 30
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: "Always"
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
             - name: pods-mount-dir
               mountPath: /var/lib/kubelet/pods
               mountPropagation: "Bidirectional"
+            - name: secret-nfsplugin
+              mountPath: /etc/config
+              readOnly: true
           resources:
             limits:
               memory: 300Mi
             requests:
               cpu: 10m
               memory: 20Mi
+      imagePullSecrets:
+        - name: nfs-registry-key
       volumes:
         - name: socket-dir
           hostPath:
@@ -129,3 +134,6 @@ spec:
             path: /var/lib/kubelet/plugins_registry
             type: Directory
           name: registration-dir
+        - name: secret-nfsplugin
+          secret:
+            secretName: csi-driver-nfs-config

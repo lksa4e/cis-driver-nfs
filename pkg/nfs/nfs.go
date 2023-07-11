@@ -66,6 +66,8 @@ const (
 	pvcNameMetadata       = "${pvc.metadata.name}"
 	pvcNamespaceMetadata  = "${pvc.metadata.namespace}"
 	pvNameMetadata        = "${pv.metadata.name}"
+	pvcNFSMetadata        = "${pvc.metadata.annotations.nfs}"
+	paramNHNCloudNFS      = "nhnCloudNFS"
 )
 
 func NewDriver(options *DriverOptions) *Driver {

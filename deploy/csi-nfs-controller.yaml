@@ -104,12 +104,16 @@ spec:
               mountPropagation: "Bidirectional"
             - mountPath: /csi
               name: socket-dir
+            - name: secret-nfsplugin
+              mountPath: /etc/config
           resources:
             limits:
               memory: 200Mi
             requests:
               cpu: 10m
               memory: 20Mi
+      imagePullSecrets:
+        - name :" nfs-registry-key
       volumes:
         - name: pods-mount-dir
           hostPath:
@@ -117,3 +121,6 @@ spec:
             type: Directory
         - name: socket-dir
           emptyDir: {}
+        - name: secret-nfsplugin
+            secret:
+              secretName: csi-driver-nfs-config
